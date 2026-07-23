@@ -1,0 +1,26 @@
+# Environments & Secrets
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Databases
+*.db
+*.sqlite3
+auth.db
+
+# OS / Editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Custom
+data.py

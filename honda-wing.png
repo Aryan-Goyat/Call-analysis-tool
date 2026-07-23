@@ -1,0 +1,128 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   OLD APPLE-STYLE DATEPICKER CSS (COMMENTED OUT)
+   ═══════════════════════════════════════════════════════════════════════════
+
+.dash-datepicker-content {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-radius: 20px !important;
+    border: 1px solid rgba(203, 213, 225, 0.8) !important;
+    box-shadow: 0 20px 60px rgba(51, 65, 85, 0.15) !important;
+    z-index: 99999 !important;
+    position: relative !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside {
+    color: #334155 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside:hover {
+    background: rgba(59, 130, 246, 0.12) !important;
+    color: #3B82F6 !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-selected {
+    background: #3B82F6 !important;
+    color: white !important;
+    border-radius: 50% !important;
+    font-weight: 700 !important;
+}
+
+.dash-datepicker-calendar th {
+    color: #94A3B8 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+}
+
+.dash-datepicker-input-wrapper {
+    background: rgba(255, 255, 255, 0.7) !important;
+    border: 1px solid rgba(203, 213, 225, 0.6) !important;
+    border-radius: 12px !important;
+}
+
+.dash-datepicker input {
+    background: transparent !important;
+    color: #334155 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    border: none !important;
+    outline: none !important;
+}
+
+.dash-datepicker-input-wrapper {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+}
+
+   END OF OLD DATEPICKER CSS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW — NEXT.JS MINIMALIST DATEPICKER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dash-datepicker-content {
+    background: var(--bg-card) !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+    z-index: 99999 !important;
+    position: relative !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside {
+    color: var(--text-p) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-inside:hover {
+    background: var(--bg-hover) !important;
+    color: var(--text-p) !important;
+}
+
+.dash-datepicker-calendar td.dash-datepicker-calendar-date-selected {
+    background: var(--text-p) !important;
+    color: var(--bg-body) !important;
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+}
+
+.dash-datepicker-calendar th {
+    color: var(--text-s) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+.dash-datepicker-input-wrapper {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+}
+
+.dash-datepicker input {
+    background: transparent !important;
+    color: var(--text-p) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    font-family: 'Inter', sans-serif !important;
+    border: none !important;
+    outline: none !important;
+}
+
+.dash-datepicker-controls {
+    color: var(--text-p) !important;
+}
+

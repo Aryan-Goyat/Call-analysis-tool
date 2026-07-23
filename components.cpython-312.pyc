@@ -1,0 +1,42 @@
+import time
+from functools import wraps
+
+# Apple system font stack — matches the app-wide typography
+APPLE_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+
+
+def ttl_cache(seconds=60):
+    """Caches a no/positional-arg function's result for `seconds`.
+    DataFrames are returned as copies so callers can mutate safely."""
+    def deco(fn):
+        cache = {}
+
+        @wraps(fn)
+        def wrapper(*args):
+            now = time.time()
+            hit = cache.get(args)
+            if hit is not None and now - hit[1] < seconds:
+                result = hit[0]
+            else:
+                result = fn(*args)
+                cache[args] = (result, now)
+            return result.copy() if hasattr(result, "copy") else result
+        return wrapper
+    return deco
+
+
+def apply_apple_theme(fig):
+    """Applies a clean, minimalist Apple-style theme to a Plotly figure."""
+    fig.update_layout(
+        autosize=True,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family=APPLE_FONT, color="#6E6E73", size=12),
+        margin=dict(l=8, r=8, t=16, b=8),
+        hoverlabel=dict(font_family=APPLE_FONT),
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="rgba(0,0,0,0.1)", tickfont=dict(color="#86868B"), automargin=True)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False, linecolor="rgba(0,0,0,0)", tickfont=dict(color="#86868B"), automargin=True)
+    return fig
+
+APPLE_COLORS = ["#0071e3", "#1d3a5f", "#5c7a8a", "#a8b8c4"]

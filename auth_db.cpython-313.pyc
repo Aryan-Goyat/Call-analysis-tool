@@ -1,0 +1,523 @@
+import dash
+import pandas as pd
+from dash import html, dcc, callback, Output, Input, State, MATCH, ALL
+import dash_bootstrap_components as dbc
+import plotly.express as px
+from datetime import datetime
+from db import get_engine
+from groq import Groq
+import os
+from dotenv import load_dotenv
+from utils import ttl_cache
+
+from components import resolve_date_preset, MAX_DRILLDOWN_CARDS
+from dashboard_shared import (
+    section_card, metric_card, quick_range_button, badge, simple_error,
+    render_ai_markdown, oldest_cards, base_figure, empty_figure,
+    BG, SURFACE, BORDER, TEXT, TEXT_MID, TEXT_SOFT, ACCENT_SOFT, DANGER
+)
+
+load_dotenv()
+
+client = Groq(api_key=os.getenv("API_KEY"))
+
+dash.register_page(__name__, path="/sr")
+
+PENDING_STATUSES = ["In-Progress", "Pending", "Pending for Approval"]
+
+# Minimal monochrome palette — dark ink for emphasis, greys for everything else (matches cr_report)
+MONO_SEQUENCE = ["#111827", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb"]
+
+# Fixed status shades in the style of cr_report's RISK_COLOR_MAP — dark ink for active work, light greys for terminal states
+SR_STATUS_COLOR_MAP = {
+    "In-Progress": "#111827",
+    "Pending": "#6b7280",
+    "Pending for Approval": "#9ca3af",
+    "Resolved": "#d1d5db",
+    "Rejected": "#e5e7eb",
+}
+
+@ttl_cache(seconds=120)
+def _fetch_all_sr_data():
+    engine = get_engine()
+    query = """
+        SELECT `Service Request ID`, `Subject`, `Status`, `Workgroup`, `Location`, `Classification`, `LogTime`
+        FROM sr_report
+        WHERE `Workgroup` IN ('IT Support (ALC)', 'IT Support (EVSM)')
+    """
+    df = pd.read_sql(query, engine)
+    if not df.empty:
+        df["date"] = pd.to_datetime(df["LogTime"], format="%m/%d/%Y %H:%M", errors="coerce")
+        df["month_year"] = df["date"].dt.strftime("%Y-%m")
+        df["month_year_label"] = df["date"].dt.strftime("%B %Y")
+    return df
+
+def fetch_filtered_sr_data(start_date=None, end_date=None):
+    df = _fetch_all_sr_data()
+    if not df.empty and start_date and end_date:
+        start_dt = pd.to_datetime(start_date)
+        end_dt   = pd.to_datetime(end_date).replace(hour=23, minute=59, second=59)
+        df = df[(df["date"] >= start_dt) & (df["date"] <= end_dt)].copy()
+    return df
+
+try:
+    init_df = fetch_filtered_sr_data()
+    MIN_DATE = init_df["date"].min().date() if not init_df.empty else datetime.now().date()
+    MAX_DATE = init_df["date"].max().date() if not init_df.empty else datetime.now().date()
+except Exception:
+    MIN_DATE = datetime.now().date()
+    MAX_DATE = datetime.now().date()
+
+# ── Layout ────────────────────────────────────────────────────────────────────
+def layout():
+    return html.Div([
+        dcc.Interval(id="sr-auto-refresh-interval", interval=5 * 60 * 1000, n_intervals=0),
+        html.Div([
+            html.Div([
+                html.Div([
+                    html.Div("OPERATIONS / SERVICE DESK", className="cr-eyebrow"),
+                    html.H1("Service Requests Report", className="cr-title"),
+                    html.P("A cleaner operations dashboard with minimal surfaces, tighter hierarchy, and a product-style layout inspired by modern Next.js SaaS dashboards.", className="cr-subtitle"),
+                ]),
+                html.Div(id="sr-last-updated", className="cr-pill"),
+            ], className="cr-hero"),
+            
+            html.Div(
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Div("Start date", className="cr-field-label"),
+                            dcc.DatePickerSingle(id="sr-start-date", min_date_allowed=MIN_DATE, max_date_allowed=MAX_DATE, date=MIN_DATE, display_format="DD MMM YYYY", className="cr-field"),
+                        ]),
+                        html.Div([
+                            html.Div("End date", className="cr-field-label"),
+                            dcc.DatePickerSingle(id="sr-end-date", min_date_allowed=MIN_DATE, max_date_allowed=MAX_DATE, date=MAX_DATE, display_format="DD MMM YYYY", className="cr-field"),
+                        ]),
+                        html.Div([
+                            html.Div("Quick ranges", className="cr-field-label"),
+                            html.Div([
+                                quick_range_button("7d", "7D", "sr-date-preset"), quick_range_button("30d", "30D", "sr-date-preset"), quick_range_button("90d", "90D", "sr-date-preset"),
+                                quick_range_button("this_month", "This Month", "sr-date-preset"), quick_range_button("this_quarter", "This Quarter", "sr-date-preset"), quick_range_button("all", "All Time", "sr-date-preset"),
+                            ], className="cr-quick-pills"),
+                        ], style={"flex": "1", "minWidth": "320px"}),
+                    ], className="cr-toolbar-group"),
+                    html.Div([
+                        html.Button("Export CSV", id="sr-export-btn", className="cr-btn-ghost"),
+                        dcc.Download(id="sr-download-csv"),
+                    ], className="cr-toolbar-group"),
+                ], className="cr-toolbar-inner cr-card"),
+                className="cr-toolbar",
+            ),
+            
+            html.Div(id="sr-kpi-row", className="cr-kpi-grid"),
+            
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Div("AI Insights", className="cr-section-title"),
+                            html.Div("Recurring themes and suggested actions.", className="cr-section-copy"),
+                        ]),
+                        html.Div([
+                            dcc.Dropdown(
+                                id="sr-ai-months-dropdown",
+                                options=[
+                                    {"label": "Last 1 month", "value": 1},
+                                    {"label": "Last 3 months", "value": 3},
+                                    {"label": "Last 6 months", "value": 6},
+                                    {"label": "Last 12 months", "value": 12},
+                                    {"label": "Selected range", "value": 100},
+                                ],
+                                value=3, clearable=False,
+                                style={"width": "180px"},
+                            ),
+                            html.Button("Generate", id="sr-btn-generate-ai", className="cr-btn"),
+                        ], className="cr-ai-controls"),
+                    ], className="cr-ai-head"),
+                    dcc.Loading(html.Div(id="sr-ai-insights-output"), type="circle", color=ACCENT_SOFT),
+                ], className="cr-card", style={"padding": "18px", "marginBottom": "24px"})
+            ]),
+            
+            html.Div([
+                section_card("Monthly volume", "Track where demand is building month over month.", graph_id="sr-chart-month"),
+                section_card("Location breakdown", "See the geographic distribution of service requests.", graph_id="sr-chart-location"),
+                section_card("Status distribution", "Compare pipeline health across lifecycle states.", graph_id="sr-chart-status", min_height="320px"),
+                section_card("Classification distribution", "View request concentration by classification.", graph_id="sr-chart-classification", min_height="320px"),
+                section_card("Workgroup distribution", "View request concentration by owning workgroup.", graph_id="sr-chart-workgroup"),
+                section_card("Pending aging", "Spot requests that are accumulating operational drag.", graph_id="sr-chart-aging"),
+            ], className="cr-chart-grid"),
+            
+            html.Div([
+                html.Div([
+                    html.Div("Oldest pending requests", className="cr-section-title"),
+                    html.Div("Separate current range pressure from long-running backlog.", className="cr-section-copy"),
+                ], className="cr-section-head"),
+                dcc.Loading(html.Div(id="sr-oldest-output"), type="circle", color=ACCENT_SOFT),
+            ], className="cr-card", style={"padding": "18px", "marginTop": "24px"}),
+            
+        ], className="cr-shell"),
+        
+        dbc.Offcanvas(
+            id="sr-side-panel-container",
+            placement="end", is_open=False, className="cr-offcanvas", title="Request drill-down",
+            children=[html.Div(id="sr-side-panel-content")],
+            style={"width": "560px", "backgroundColor": BG, "borderLeft": f"1px solid {BORDER}"}
+        ),
+    ], className="cr-page")
+
+# ── Master callback ───────────────────────────────────────────────────────────
+@callback(
+    Output("sr-kpi-row",              "children"),
+    Output("sr-chart-month",          "figure"),
+    Output("sr-chart-location",       "figure"),
+    Output("sr-chart-classification", "figure"),
+    Output("sr-chart-status",         "figure"),
+    Output("sr-chart-workgroup",      "figure"),
+    Output("sr-chart-aging",          "figure"),
+    Output("sr-oldest-output",        "children"),
+    Output("sr-last-updated",         "children"),
+    Input("sr-start-date",            "date"),
+    Input("sr-end-date",              "date"),
+    Input("sr-auto-refresh-interval", "n_intervals"),
+)
+def update_dashboard(start_date, end_date, _intervals):
+    all_data = fetch_filtered_sr_data()
+    if not all_data.empty and start_date and end_date:
+        start_dt = pd.to_datetime(start_date)
+        end_dt   = pd.to_datetime(end_date).replace(hour=23, minute=59, second=59)
+        fdf = all_data[(all_data["date"] >= start_dt) & (all_data["date"] <= end_dt)].copy()
+    else:
+        fdf = all_data.copy()
+
+    if not all_data.empty:
+        pending_all = all_data[all_data["Status"].isin(PENDING_STATUSES)].copy()
+        pending_all["age_days"] = (datetime.now() - pending_all["date"]).dt.days
+        oldest_all  = pending_all.nlargest(3, "age_days")
+    else:
+        oldest_all = pd.DataFrame()
+
+    if not fdf.empty:
+        pending_sel = fdf[fdf["Status"].isin(PENDING_STATUSES)].copy()
+        if not pending_sel.empty:
+            pending_sel["age_days"] = (datetime.now() - pending_sel["date"]).dt.days
+            oldest_sel = pending_sel.nlargest(3, "age_days")
+        else:
+            oldest_sel = pd.DataFrame()
+    else:
+        pending_sel = pd.DataFrame()
+        oldest_sel = pd.DataFrame()
+
+    combined_oldest = html.Div([
+        html.Div([
+            html.Div([html.Div("Selected range", className="cr-list-title"), oldest_cards(oldest_sel, "No pending items for this timeframe.", id_col="Service Request ID", desc_col="Subject", status_col="Status")], className="cr-list-card"),
+            html.Div([html.Div("All time", className="cr-list-title"), oldest_cards(oldest_all, "No pending items overall.", id_col="Service Request ID", desc_col="Subject", status_col="Status")], className="cr-list-card"),
+        ], className="cr-oldest-grid")
+    ])
+
+    last_updated_text = ["Updated ", datetime.now().strftime("%d %b %Y · %I:%M %p")]
+
+    if fdf.empty:
+        empty_fig = empty_figure("No data available for this range")
+        return (
+            [
+                metric_card("Active SRs", 0, "Active in pipeline", 0, clickable_id="sr-kpi-active"),
+                metric_card("Resolution rate", "0%", "Percentage of tickets successfully resolved", 0),
+                metric_card("Rejected", 0, "Stable", 0, clickable_id="sr-kpi-rejected"),
+                metric_card("Pending Approval", 0, "Awaiting action", 0, clickable_id="sr-kpi-pending-approval"),
+            ],
+            empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, empty_fig, combined_oldest, last_updated_text
+        )
+
+    active   = int(fdf["Status"].isin(PENDING_STATUSES).sum())
+    res      = int((fdf["Status"] == "Resolved").sum())
+    rej      = int((fdf["Status"] == "Rejected").sum())
+    pend_app = int((fdf["Status"] == "Pending for Approval").sum())
+    rate     = round(res / len(fdf) * 100) if len(fdf) > 0 else 0
+
+    active_pct = round(active / len(fdf) * 100) if len(fdf) > 0 else 0
+    rej_pct = round(rej / len(fdf) * 100) if len(fdf) > 0 else 0
+    pend_app_pct = round(pend_app / len(fdf) * 100) if len(fdf) > 0 else 0
+
+    kpi_children = [
+        metric_card("Active SRs", active, "Active in pipeline", active_pct, clickable_id="sr-kpi-active"),
+        metric_card("Resolution rate", f"{rate}%", "Percentage of tickets successfully resolved", rate),
+        metric_card("Rejected", rej, "Stable", rej_pct, clickable_id="sr-kpi-rejected"),
+        metric_card("Pending Approval", pend_app, "Awaiting action", pend_app_pct, clickable_id="sr-kpi-pending-approval"),
+    ]
+
+    month_counts = fdf.groupby(["month_year", "month_year_label"]).size().reset_index(name="count").sort_values("month_year")
+    fig_month = px.bar(month_counts, x="month_year_label", y="count", text="count")
+    fig_month.update_traces(textposition="outside", marker_color="#111827", marker_line_width=0)
+    fig_month = base_figure(fig_month)
+
+    fig_location = px.bar(fdf["Location"].value_counts().reset_index(), x="Location", y="count", text="count")
+    fig_location.update_traces(textposition="outside", marker_color="#111827", marker_line_width=0)
+    fig_location = base_figure(fig_location)
+
+    classification_counts = fdf["Classification"].value_counts().reset_index()
+    classification_counts.columns = ["Classification", "count"]
+    
+    CLASSIFICATION_COLORS = [
+        "#9ca3af", # Cool gray
+        "#768770", # Olive/sage green
+        "#b56576", # Magenta-pink
+        "#d97736", # Amber/orange
+        "#1e293b", # Dark navy
+        "#111827", # Black
+        "#e5e7eb", # Light gray
+    ]
+
+    fig_classification = px.pie(
+        classification_counts,
+        names="Classification",
+        values="count",
+        hole=0.72,
+        color="Classification",
+        color_discrete_sequence=CLASSIFICATION_COLORS,
+    )
+    fig_classification.update_traces(textinfo="percent", marker=dict(line=dict(color=SURFACE, width=3)))
+    # Use top yanchor to ensure multi-row legends grow downwards into the margin correctly
+    fig_classification.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.02, xanchor="center", x=0.5, font=dict(size=11)))
+    fig_classification = base_figure(fig_classification, height=320)
+    fig_classification.update_layout(margin_b=100)
+
+    status_counts = fdf["Status"].value_counts().reset_index()
+    status_counts.columns = ["Status", "count"]
+    fig_status = px.pie(
+        status_counts,
+        names="Status",
+        values="count",
+        hole=0.72,
+        color="Status",
+        color_discrete_map=SR_STATUS_COLOR_MAP,
+    )
+    fig_status.update_traces(textinfo="percent", marker=dict(line=dict(color=SURFACE, width=3)))
+    fig_status.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.02, xanchor="center", x=0.5))
+    fig_status = base_figure(fig_status, height=320)
+    fig_status.update_layout(margin_b=80)
+
+    fig_workgroup = px.bar(fdf["Workgroup"].value_counts().reset_index(), x="count", y="Workgroup", orientation="h", text="count")
+    fig_workgroup.update_traces(textposition="outside", marker_color="#111827", marker_line_width=0)
+    fig_workgroup = base_figure(fig_workgroup)
+    fig_workgroup.update_layout(yaxis={'categoryorder':'total ascending'})
+
+    if not pending_sel.empty:
+        pending_sel["age_bucket"] = pd.cut(pending_sel["age_days"], bins=[0, 1, 3, 5, 7, float("inf")], labels=["0-1", "2-3", "4-5", "5-7", ">7"])
+        aging = pending_sel["age_bucket"].value_counts().reset_index()
+        fig_aging = px.bar(aging, x="age_bucket", y="count", text="count")
+        fig_aging.update_traces(textposition="outside", marker_color="#111827", marker_line_width=0)
+    else:
+        fig_aging = px.bar(title="No pending requests")
+    fig_aging = base_figure(fig_aging)
+
+    return (kpi_children, fig_month, fig_location, fig_classification, fig_status, fig_workgroup, fig_aging, combined_oldest, last_updated_text)
+
+# AI Generation
+@callback(
+    Output("sr-ai-insights-output", "children"),
+    Input("sr-btn-generate-ai", "n_clicks"),
+    State("sr-ai-months-dropdown", "value"),
+    State("sr-start-date", "date"),
+    State("sr-end-date", "date"),
+    prevent_initial_call=True,
+)
+def generate_sr_insights(n_clicks, months, start_date, end_date):
+    if not n_clicks: return dash.no_update
+    df = fetch_filtered_sr_data(start_date, end_date)
+    if df.empty: return simple_error("No SRs found for this time frame.")
+
+    if months < 100:
+        cutoff = pd.to_datetime(end_date) - pd.DateOffset(months=months)
+        current = df[df["date"] >= cutoff].copy()
+    else:
+        current = df.copy()
+
+    if current.empty:
+        return simple_error("No SRs found in the specified range.")
+
+    resolved = df[df["Status"] == "Resolved"].copy()
+    def find_similar(subj, res_df, top_n=3):
+        if pd.isna(subj) or not str(subj).strip(): return []
+        kw = [w for w in str(subj).lower().split() if len(w) > 3]
+        if not kw: return []
+        mask = res_df["Subject"].str.lower().apply(lambda s: any(k in str(s) for k in kw))
+        return res_df[mask].head(top_n)[["Subject"]].to_dict("records")
+
+    lines = []
+    for _, row in current.iterrows():
+        sim = find_similar(row.get("Subject"), resolved)
+        sim_txt = (" | Similar resolved: " + "; ".join([str(s.get("Subject", "")) for s in sim])) if sim else ""
+        lines.append(f"Status: {row.get('Status','')} | Classification: {row.get('Classification','')} | Subject: {row.get('Subject','')}{sim_txt}")
+
+    prompt = f"""
+You are a Senior IT service desk analyst. Analyze ALL these Service Requests.
+Find ALL unique patterns. One pattern per unique issue type.
+
+Respond in EXACTLY this format with no extra text:
+
+PATTERN: [4-5 word title] | [High/Medium/Low]
+[One sentence detail]
+Suggested fix: [One sentence]
+
+REDUCTION TIPS:
+- [tip 1]
+- [tip 2]
+- [tip 3]
+
+Service Requests:
+{chr(10).join(lines)}
+"""
+    try:
+        response = client.chat.completions.create(model="llama-3.3-70b-versatile", max_tokens=2000, messages=[{"role": "user", "content": prompt}])
+        return render_ai_markdown(response.choices[0].message.content)
+    except Exception as e:
+        return simple_error(e)
+
+# Side Panel Drilldown
+@callback(
+    Output("sr-side-panel-content", "children"),
+    Output("sr-side-panel-container", "is_open"),
+    Input("sr-chart-month", "clickData"),
+    Input("sr-chart-location", "clickData"),
+    Input("sr-chart-classification", "clickData"),
+    Input("sr-chart-status", "clickData"),
+    Input("sr-chart-workgroup", "clickData"),
+    Input("sr-chart-aging", "clickData"),
+    State("sr-start-date", "date"),
+    State("sr-end-date", "date"),
+    prevent_initial_call=True,
+)
+def sr_drilldown_panel(c_month, c_loc, c_class, c_stat, c_wg, c_aging, start_date, end_date):
+    ctx = dash.callback_context
+    if not ctx.triggered or ctx.triggered[0]["value"] is None: return dash.no_update, False
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    df = fetch_filtered_sr_data(start_date, end_date)
+    df["month_year_label"] = df["date"].dt.strftime("%B %Y")
+    pending = df[df["Status"].isin(PENDING_STATUSES)].copy()
+    if not pending.empty:
+        pending["age_days"] = (datetime.now() - pending["date"]).dt.days
+        pending["age_bucket"] = pd.cut(pending["age_days"], bins=[0, 1, 3, 5, 7, float("inf")], labels=["0-1", "2-3", "4-5", "5-7", ">7"])
+
+    filtered_df, filter_text = pd.DataFrame(), ""
+    try:
+        if triggered_id == "sr-chart-month" and c_month: filtered_df = df[df["month_year_label"] == c_month["points"][0]["x"]]; filter_text = f"Month: {c_month['points'][0]['x']}"
+        elif triggered_id == "sr-chart-location" and c_loc: filtered_df = df[df["Location"] == c_loc["points"][0]["x"]]; filter_text = f"Location: {c_loc['points'][0]['x']}"
+        elif triggered_id == "sr-chart-classification" and c_class: filtered_df = df[df["Classification"] == c_class["points"][0]["label"]]; filter_text = f"Classification: {c_class['points'][0]['label']}"
+        elif triggered_id == "sr-chart-status" and c_stat: filtered_df = df[df["Status"] == c_stat["points"][0]["label"]]; filter_text = f"Status: {c_stat['points'][0]['label']}"
+        elif triggered_id == "sr-chart-workgroup" and c_wg: filtered_df = df[df["Workgroup"] == c_wg["points"][0]["y"]]; filter_text = f"Workgroup: {c_wg['points'][0]['y']}"
+        elif triggered_id == "sr-chart-aging" and c_aging: filtered_df = pending[pending["age_bucket"] == c_aging["points"][0]["x"]]; filter_text = f"Aging: {c_aging['points'][0]['x']} Days"
+    except Exception: return simple_error("Could not process selection."), True
+
+    if filtered_df.empty: return html.Div("No records found.", className="cr-note-box"), True
+
+    cards = []
+    for _, row in filtered_df.head(MAX_DRILLDOWN_CARDS).iterrows():
+        tid, desc, status_val = str(row.get("Service Request ID", "")), str(row.get("Subject", "")), row.get("Status", "N/A")
+        payload = f"Classification: {row.get('Classification')} | Location: {row.get('Location')} | Workgroup: {row.get('Workgroup')} | Subject: {desc}"
+        cards.append(html.Details([
+            html.Summary([html.Div([
+                html.Span(f"#{tid}", style={"fontWeight": "600", "fontSize": "15px", "color": TEXT}),
+                badge(status_val)
+            ], style={"display": "flex", "alignItems": "center", "gap": "8px"})], className="cr-ticket-head"),
+            html.Div([
+                html.Div([html.B("Location: "), str(row.get("Location", "N/A"))], style={"marginBottom": "8px"}),
+                html.Div([html.B("Classification: "), str(row.get("Classification", "N/A"))], style={"marginBottom": "8px"}),
+                html.Div([html.B("Subject:"), html.P(desc, style={"marginTop": "4px", "color": TEXT_MID, "fontSize": "13px"})]),
+                html.Div(payload, id={"type": "sr-ticket-payload", "index": tid}, style={"display": "none"}),
+                html.Button("Generate AI Action Plan", id={"type": "sr-btn-ticket-ai", "index": tid}, className="cr-btn", style={"marginTop": "12px", "width": "100%"}),
+                dcc.Loading(html.Div(id={"type": "sr-ticket-ai-output", "index": tid}, style={"marginTop": "16px", "display": "none"}), type="circle", color=ACCENT_SOFT)
+            ], className="cr-ticket-body"),
+        ], className="cr-ticket", style={"marginBottom": "8px"}))
+
+    return html.Div([
+        html.Div(f"{len(filtered_df)} items for '{filter_text}' (showing first {MAX_DRILLDOWN_CARDS})" if len(filtered_df) > MAX_DRILLDOWN_CARDS else f"{len(filtered_df)} items for '{filter_text}'",
+                 style={"fontWeight": "600", "marginBottom": "20px", "color": TEXT, "fontSize": "15px"}),
+        html.Div(cards),
+    ]), True
+
+@callback(
+    Output({"type": "sr-ticket-ai-output", "index": MATCH}, "children"),
+    Output({"type": "sr-ticket-ai-output", "index": MATCH}, "style"),
+    Input({"type": "sr-btn-ticket-ai", "index": MATCH}, "n_clicks"),
+    State({"type": "sr-ticket-payload", "index": MATCH}, "children"),
+    State({"type": "sr-ticket-ai-output", "index": MATCH}, "style"),
+    prevent_initial_call=True,
+)
+def sr_ticket_insight(n_clicks, payload, current_style):
+    if not n_clicks: return dash.no_update, dash.no_update
+    prompt = f"You are an IT Operations Expert. Review this Service Request and provide:\n**1. Root Cause Hypothesis:** (1 sentence)\n**2. Recommended SOP / Action:** (1-2 sentences)\n\nTicket: {payload}"
+    try:
+        response = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}])
+        return render_ai_markdown(response.choices[0].message.content), {**current_style, "display": "block"}
+    except Exception as e:
+        return simple_error(e), {**current_style, "display": "block"}
+
+@callback(
+    Output("sr-download-csv", "data"), Input("sr-export-btn", "n_clicks"),
+    State("sr-start-date", "date"), State("sr-end-date", "date"), prevent_initial_call=True,
+)
+def export_sr_csv(n_clicks, start_date, end_date):
+    df = fetch_filtered_sr_data(start_date, end_date)
+    return dcc.send_data_frame(df.to_csv, "sr_report_export.csv", index=False)
+
+SR_KPI_DRILLDOWN_CONFIG = {
+    "sr-kpi-active": ("Active SRs", PENDING_STATUSES, "No active SRs."),
+    "sr-kpi-rejected": ("Rejected SRs", ["Rejected"], "No rejected SRs."),
+    "sr-kpi-pending-approval": ("Pending Approval", ["Pending for Approval"], "No SRs pending approval."),
+}
+
+@callback(
+    Output("sr-side-panel-content", "children", allow_duplicate=True),
+    Output("sr-side-panel-container", "is_open", allow_duplicate=True),
+    Input("sr-kpi-active", "n_clicks"),
+    Input("sr-kpi-rejected", "n_clicks"),
+    Input("sr-kpi-pending-approval", "n_clicks"),
+    State("sr-start-date", "date"),
+    State("sr-end-date", "date"),
+    prevent_initial_call=True,
+)
+def sr_kpi_drilldown(n_active, n_rejected, n_pending, start_date, end_date):
+    ctx = dash.callback_context
+    if not ctx.triggered or ctx.triggered[0]["value"] is None:
+        return dash.no_update, dash.no_update
+
+    triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    config = SR_KPI_DRILLDOWN_CONFIG.get(triggered_id)
+    if config is None:
+        return dash.no_update, dash.no_update
+    title, statuses, empty_message = config
+
+    df = fetch_filtered_sr_data(start_date, end_date)
+    filtered_df = df[df["Status"].isin(statuses)] if not df.empty else pd.DataFrame()
+    if filtered_df.empty:
+        return html.Div(empty_message, className="cr-side-empty"), True
+
+    cards = []
+    for _, row in filtered_df.head(MAX_DRILLDOWN_CARDS).iterrows():
+        cards.append(html.Div([
+            html.Div(f"#{row.get('Service Request ID')}", style={"fontWeight": "800", "fontSize": "14px", "color": TEXT}),
+            html.Div(row.get("Status"), className="cr-muted", style={"fontSize": "12px", "marginTop": "4px"}),
+            html.Div(str(row.get("Subject", ""))[:120], style={"fontSize": "13px", "color": TEXT_MID, "marginTop": "6px"}),
+        ], className="cr-list-card", style={"marginBottom": "10px"}))
+
+    subtitle = f"{len(filtered_df)} requests in the selected range"
+    if len(filtered_df) > MAX_DRILLDOWN_CARDS:
+        subtitle += f" (showing first {MAX_DRILLDOWN_CARDS})"
+
+    return html.Div([
+        html.Div([
+            html.H3(title, className="cr-side-title"),
+            html.P(subtitle, className="cr-side-subtitle"),
+        ], style={"marginBottom": "14px"}),
+        html.Div(cards),
+    ]), True
+
+@callback(
+    Output("sr-start-date", "date", allow_duplicate=True),
+    Output("sr-end-date", "date", allow_duplicate=True),
+    Input({"type": "sr-date-preset", "index": ALL}, "n_clicks"),
+    prevent_initial_call=True,
+)
+def sr_date_preset(n_clicks_list):
+    return resolve_date_preset(n_clicks_list, MIN_DATE, MAX_DATE)

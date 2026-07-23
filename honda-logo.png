@@ -1,0 +1,382 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   APPLE MINIMALIST DESIGN SYSTEM
+   SF typography · #F5F5F7 canvas · frosted glass · pill buttons · soft depth
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base Reset ──────────────────────────────────────────────────────────── */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: var(--text-p);
+    background: var(--bg-body) !important;
+    letter-spacing: -0.01em;
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* ── KPI Cards ───────────────────────────────────────────────────────────── */
+.kpi-card {
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease;
+}
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── Alert Cards ─────────────────────────────────────────────────────────── */
+.alert-card {
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+.alert-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── Buttons (Apple pill) ────────────────────────────────────────────────── */
+.btn-premium {
+    transition: all 0.2s ease;
+    background-color: var(--accent) !important;
+    color: var(--accent-fg) !important;
+    border: none !important;
+    border-radius: 980px !important;
+    font-weight: 500 !important;
+}
+.btn-premium:hover {
+    opacity: 0.85;
+    box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3);
+}
+
+.btn-outline-premium {
+    transition: all 0.2s ease;
+    color: var(--accent) !important;
+    border: 1px solid var(--accent) !important;
+    background-color: transparent !important;
+    border-radius: 980px !important;
+}
+.btn-outline-premium:hover {
+    background-color: rgba(0, 113, 227, 0.08) !important;
+}
+
+/* ── Frosted Topbar ──────────────────────────────────────────────────────── */
+.glass-topbar {
+    background-color: var(--bg-glass) !important;
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--border-light) !important;
+}
+
+/* ── Segmented Control (Apple style) ─────────────────────────────────────── */
+.btn-group {
+    background-color: var(--bg-active);
+    border-radius: 10px;
+    padding: 2px;
+    border: none;
+}
+.btn-group .btn {
+    border: none !important;
+    background-color: transparent;
+    color: var(--text-s);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border-radius: 8px !important;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+.btn-group .btn:hover {
+    color: var(--text-p);
+}
+.btn-group .btn-check:checked + .btn {
+    background-color: var(--bg-card) !important;
+    color: var(--text-p) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.responsive-flex-row {
+    flex-wrap: wrap !important;
+}
+.responsive-flex-row > div {
+    min-width: 0;
+}
+
+.apple-card {
+    min-width: 0;
+}
+
+/* ── Mobile Responsive ───────────────────────────────────────────────────── */
+@media (max-width: 850px) {
+    .sidebar-container {
+        position: relative !important;
+        width: 100% !important;
+        height: auto !important;
+        min-width: 100% !important;
+        top: 0 !important;
+        left: 0 !important;
+        margin-bottom: 0 !important;
+        border-radius: 0 !important;
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 12px !important;
+    }
+    .sidebar-nav-container {
+        display: flex !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        white-space: nowrap;
+        padding: 0 12px !important;
+        gap: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .sidebar-nav-container > a {
+        display: inline-block;
+    }
+    .sidebar-nav-container::-webkit-scrollbar {
+        display: none;
+    }
+    .sidebar-bottom-profile {
+        position: relative !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        padding-top: 12px !important;
+        margin: 0 12px;
+    }
+    .page-container {
+        margin-left: 0 !important;
+    }
+    .responsive-flex-row {
+        flex-direction: column !important;
+        gap: 12px !important;
+    }
+    .responsive-flex-row > div {
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: none !important;
+    }
+    .responsive-padding {
+        padding: 0 12px !important;
+    }
+    .apple-card {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    .header-top-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+    }
+}
+
+/* ── Loading Bar ─────────────────────────────────────────────────────────── */
+._dash-loading ~ #page-loading-bar,
+[data-dash-is-loading="true"] ~ #page-loading-bar {
+    width: 70% !important;
+}
+
+/* ── Hover Lift ──────────────────────────────────────────────────────────── */
+.hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    cursor: default;
+}
+.hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ── Theme Toggle Button ─────────────────────────────────────────────────── */
+.theme-btn {
+    height: 36px;
+    width: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    background: var(--bg-card);
+    box-shadow: none;
+}
+.theme-btn:hover {
+    border-color: var(--border-hover);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.icon-container {
+    position: relative;
+    width: 18px;
+    height: 18px;
+}
+.bulb-off, .bulb-on {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 18px;
+    height: 18px;
+    transition: all 200ms ease;
+}
+
+/* Light Mode — show off icon */
+.bulb-on {
+    opacity: 0;
+    transform: scale(0.5);
+}
+.bulb-off {
+    opacity: 1;
+    transform: scale(1);
+    color: var(--text-s);
+}
+
+/* Dark Mode — show on icon */
+
+/* ── Skeleton Shimmer ────────────────────────────────────────────────────── */
+@keyframes shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+.skeleton-shimmer {
+    background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-card) 50%, var(--bg-hover) 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ── Card Fade-In (staggered, Apple ease) ────────────────────────────────── */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.apple-card, .chart-card {
+    animation: fadeIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.apple-card:nth-child(1) { animation-delay: 0.03s; }
+.apple-card:nth-child(2) { animation-delay: 0.06s; }
+.apple-card:nth-child(3) { animation-delay: 0.09s; }
+.apple-card:nth-child(4) { animation-delay: 0.12s; }
+.apple-card:nth-child(5) { animation-delay: 0.15s; }
+.apple-card:nth-child(6) { animation-delay: 0.18s; }
+
+/* ── Toast Notifications ─────────────────────────────────────────────────── */
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastSlideOut {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(40px); }
+}
+.toast-notification {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    padding: 12px 18px;
+    border-radius: 980px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-p);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-light);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.14);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    animation: toastSlideIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    min-width: 240px;
+}
+.toast-notification .toast-check {
+    color: #34C759;
+}
+.toast-exit {
+    animation: toastSlideOut 0.3s ease both;
+}
+
+/* ── Date Preset Pills ───────────────────────────────────────────────────── */
+.date-preset-pill {
+    border-radius: 980px !important;
+}
+.date-preset-pill:hover {
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    background: rgba(0, 113, 227, 0.06) !important;
+}
+.date-preset-pill:active {
+    transform: scale(0.96);
+}
+
+/* ── cmdk results hover ──────────────────────────────────────────────────── */
+.cmdk-item-hover:hover {
+    background: var(--bg-hover);
+}
+
+/* ── Dash Component Dark Mode Overrides ──────────────────────────────────── */
+
+/* Dropdown */
+
+/* Light mode dropdown */
+.Select-control {
+    background: var(--bg-card) !important;
+    border-color: var(--border-color) !important;
+    color: var(--text-p) !important;
+    border-radius: 10px !important;
+}
+.Select-menu-outer {
+    background: #FFFFFF !important;
+    border: 1px solid var(--border-light) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12) !important;
+    overflow: hidden;
+}
+
+/* Inputs */
+
+/* Date picker */
+
+/* Dark calendar (react-dates) */
+
+/* Scrollbar — Minimal */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.35);
+}
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* KPI SVG ring track */
+
+/* Buttons (dark generic) */
+
+/* Side panels */
+
+/* Chat panel */
+
+/* Plotly charts */
+
+/* Details / accordion */
+
+/* Alert & Notification Cards */
+
+/* Today strip */
+
+/* ── Premium Hover Card ──────────────────────────────────────────────────── */
+.premium-hover-card {
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease;
+}
+.premium-hover-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Loading Shimmer (dark mode skeleton) ────────────────────────────────── */
